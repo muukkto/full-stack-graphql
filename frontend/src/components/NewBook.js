@@ -16,7 +16,11 @@ const NewBook = (props) => {
 
     const published_int = parseInt(published)
 
-    props.createBook({  variables: { title, author, published: published_int, genres } })
+    props.createBook({  variables: { 
+      title: title.length > 0 ? title : undefined, 
+      author: author.length > 0 ? author : undefined, 
+      published: published_int,
+      genres: genres.length > 0 ? genres : undefined } })
 
     setTitle('')
     setPublished('')

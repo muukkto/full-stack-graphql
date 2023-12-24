@@ -1,16 +1,27 @@
 import { useState } from 'react'
 import Select from 'react-select'
 
+import { useQuery } from '@apollo/client'
+
+import { ALL_AUTHORS } from '../queries'
+
 const Authors = (props) => {
   const [born, setBorn] = useState('')
   const [selectedOption, setSelectedOption] = useState(null)
 
+  const authors_query = useQuery(ALL_AUTHORS)
+
   if (!props.show) {
     return null
   }
-  const authors = props.authors
 
-  const options = props.authors.map((a) => ({ 'value': a.name, 'label': a.name}))
+  if ( authors_query.loading ) {
+    return <div>loading...</div>
+  }
+
+  const authors = authors_query.data.allAuthors
+
+  const options = authors.map((a) => ({ 'value': a.name, 'label': a.name}))
 
 
   const submit = async (event) => {

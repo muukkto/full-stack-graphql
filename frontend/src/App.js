@@ -1,66 +1,67 @@
 import { useState } from 'react'
 
-import { gql, useQuery, useMutation } from '@apollo/client'
+import { useMutation, useApolloClient, useSubscription } from '@apollo/client'
 
 import Authors from './components/Authors'
 import Books from './components/Books'
 import NewBook from './components/NewBook'
+import LoginForm from './components/Login'
+import Notify from './components/Notify'
+import FavoriteBooks from './components/FavoriteBooks'
 
-const ALL_AUTHORS = gql`
-  query {
-    allAuthors  {
-      name
-      born
-      bookCount
-    }
-  }
-`
 
-const ALL_BOOKS = gql`
-  query {
-    allBooks  {
-      title
-      author
-      published
-    }
-  }
-`
-
-const CREATE_BOOK = gql`
-  mutation createBook ($title: String!, $author: String!, $published: Int!, $genres: [String!]!) {
-    addBook(
-      title: $title,
-      author: $author,
-      published: $published,
-      genres: $genres
-    ) {
-      title
-    }
-  }
-`
-
-const EDIT_AUTHOR = gql`
-  mutation editAuthor ($name: String!, $born: Int!) {
-    editAuthor(
-      name: $name,
-      setBornTo: $born
-    ) {
-      name
-    }
-  }
-`
+import { ALL_AUTHORS, ALL_BOOKS, ALL_GENRES, CREATE_BOOK, EDIT_AUTHOR, BOOK_ADDED } from './queries'
 
 const App = () => {
+  const [token, setToken] = useState(null)
   const [page, setPage] = useState('authors')
+  const [errorMessage, setErrorMessage] = useState(null)
+  
+  const client = useApolloClient()
 
-  const authors = useQuery(ALL_AUTHORS)
-  const books = useQuery(ALL_BOOKS)
+  const notify = (message) => {
+    setErrorMessage(message)
+    setTimeout(() => {
+      setErrorMessage(null)
+    }, 10000)
+  }
 
-  const [createBook] = useMutation(CREATE_BOOK, {refetchQueries: [ { query: ALL_BOOKS }, { query: ALL_AUTHORS } ]})
-  const [editAuthor] = useMutation(EDIT_AUTHOR, {refetchQueries: [ { query: ALL_AUTHORS } ]})
+  useSubscription(BOOK_ADDED, {
+    onData: ({ data }) => {
+      const addedBook = data.data.bookAdded
+      notify(`${addedBook.title} added`)
 
-  if ( authors.loading || books.loading ) {
-    return <div>loading...</div>
+      client.cache.updateQuery({ query: ALL_BOOKS }, ({ allBooks }) => {
+        return {
+          allBooks: allBooks.concat(addedBook),
+        }
+      })
+    }
+  })
+
+  const [createBook] = useMutation(CREATE_BOOK, {
+    onError: (error) => {
+      const messages = error.graphQLErrors.map(e => e.message).join('\n')
+      notify(messages)
+    },
+    refetchQueries: [ { query: ALL_BOOKS }, { query: ALL_AUTHORS }, { query: ALL_GENRES } ]})
+  
+  const [editAuthor] = useMutation(EDIT_AUTHOR, {
+    onError: (error) => {
+      const messages = error.graphQLErrors.map(e => e.message).join('\n')
+      notify(messages)
+    },
+    refetchQueries: [ { query: ALL_AUTHORS } ]})
+
+  const logout = () => {
+    setToken(null)
+    localStorage.clear()
+    client.resetStore()
+  }
+
+  const login = (token) => {
+    setToken(token)
+    setPage('authors')
   }
 
   return (
@@ -68,14 +69,28 @@ const App = () => {
       <div>
         <button onClick={() => setPage('authors')}>authors</button>
         <button onClick={() => setPage('books')}>books</button>
-        <button onClick={() => setPage('add')}>add book</button>
+        {token ? (
+          <>
+          <button onClick={() => setPage('add')}>add book</button>
+          <button onClick={() => setPage('favorite')}>recommend</button>
+          <button onClick={logout}>logout</button>
+          </>
+         ) : (  
+          <button onClick={() => setPage('login')}>login</button>
+        )}
       </div>
 
-      <Authors show={page === 'authors'} authors={authors.data.allAuthors} editAuthor={editAuthor} />
+      <Notify errorMessage={errorMessage} />
 
-      <Books show={page === 'books'} books={books.data.allBooks} />
+      <Authors show={page === 'authors'} editAuthor={editAuthor} />
+
+      <Books show={page === 'books'} />
 
       <NewBook show={page === 'add'} createBook={createBook} />
+
+      <LoginForm show={page === 'login'} setLoginToken={login} setError={notify} />
+
+      <FavoriteBooks show={page === "favorite"} />
     </div>
   )
 }
